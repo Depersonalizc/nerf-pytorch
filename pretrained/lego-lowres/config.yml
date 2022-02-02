@@ -1,6 +1,6 @@
 dataset:
   # Edit this to reflect your datapath.
-  basedir: cache/nerf_synthetic/lego
+  basedir: /content/data/nerf_synthetic/lego
   far: 6
   half_res: true
   near: 2
