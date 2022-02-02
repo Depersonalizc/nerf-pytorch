@@ -27,6 +27,10 @@ dataset:
   # For the Blender datasets (synthetic), optionally return images
   # at half the original resolution of 800 x 800, to save space.
   half_res: True
+  # Exact image size
+  img_size: 224
+  # Patch-to-img size ratio
+  patch_ratio: 0.6
   # Stride (include one per "testskip" images in the dataset).
   testskip: 1
   # Do not use NDC (normalized device coordinates). Usually True for
