@@ -13,7 +13,7 @@ experiment:
   print_every: 100
   randomseed: 42
   save_every: 5000
-  train_iters: 200000
+  train_iters: 300000
   validate_every: 100
 models:
   coarse:

@@ -20,13 +20,15 @@ dataset:
   # Type of dataset (Blender vs LLFF vs DeepVoxels vs something else)
   type: blender
   # Base directory of dataset.
-  basedir: cache/nerf_synthetic/lego
+  basedir: /content/data/nerf_synthetic/lego
   # Optionally, provide a path to the pre-cached dataset dir. This
   # overrides the other dataset options.
   cachedir: cache/legocache200
   # For the Blender datasets (synthetic), optionally return images
   # at half the original resolution of 800 x 800, to save space.
   half_res: True
+  # Exact image size
+  img_size: 224
   # Stride (include one per "testskip" images in the dataset).
   testskip: 1
   # Do not use NDC (normalized device coordinates). Usually True for

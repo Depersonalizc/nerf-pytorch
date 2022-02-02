@@ -9,6 +9,11 @@ def volume_render_radiance_field(
     ray_directions,
     radiance_field_noise_std=0.0,
     white_background=False,
+
+    render_rgb=True,
+    render_disp=True,
+    render_acc=True,
+    render_depth=True,
 ):
     # TESTED
     one_e_10 = torch.tensor(
@@ -39,15 +44,19 @@ def volume_render_radiance_field(
     alpha = 1.0 - torch.exp(-sigma_a * dists)
     weights = alpha * cumprod_exclusive(1.0 - alpha + 1e-10)
 
-    rgb_map = weights[..., None] * rgb
-    rgb_map = rgb_map.sum(dim=-2)
-    depth_map = weights * depth_values
-    depth_map = depth_map.sum(dim=-1)
-    # depth_map = (weights * depth_values).sum(dim=-1)
-    acc_map = weights.sum(dim=-1)
-    disp_map = 1.0 / torch.max(1e-10 * torch.ones_like(depth_map), depth_map / acc_map)
+    rgb_map, disp_map, acc_map, depth_map = None, None, None, None
+    if render_rgb:
+        rgb_map = weights[..., None] * rgb
+        rgb_map = rgb_map.sum(dim=-2)
+    if render_depth:
+        depth_map = weights * depth_values
+        depth_map = depth_map.sum(dim=-1)
+    if render_acc:
+        acc_map = weights.sum(dim=-1)
+    if render_disp:
+        disp_map = 1.0 / torch.max(1e-10 * torch.ones_like(depth_map), depth_map / acc_map)
 
-    if white_background:
+    if white_background and render_rgb:
         rgb_map = rgb_map + (1.0 - acc_map[..., None])
 
     return rgb_map, disp_map, acc_map, weights, depth_map

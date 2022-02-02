@@ -168,7 +168,7 @@ def main():
 
         model_coarse.train()
         if model_fine:
-            model_coarse.train()
+            model_fine.train()
 
         rgb_coarse, rgb_fine = None, None
         target_ray_values = None
