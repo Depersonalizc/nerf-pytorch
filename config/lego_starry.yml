@@ -1,7 +1,7 @@
 # Parameters to setup experiment.
 experiment:
   # Unique experiment identifier
-  id: lego-starry
+  id: lego-starry-fixed-crop90
   # Experiment logs will be stored at "logdir"/"id"
   logdir: logs
   # Seed for random number generators (for repeatability).
@@ -30,7 +30,7 @@ dataset:
   # Exact image size
   img_size: 224
   # Patch-to-img size ratio
-  patch_ratio: 0.5
+  patch_ratio: 0.9
   # Stride (include one per "testskip" images in the dataset).
   testskip: 1
   # Do not use NDC (normalized device coordinates). Usually True for

@@ -195,6 +195,7 @@ def main():
                 cfg.dataset.basedir,
                 half_res=cfg.dataset.half_res,
                 testskip=cfg.dataset.testskip,
+                img_size=cfg.dataset.img_size
             )
             i_train, i_val, i_test = i_split
             H, W, focal = hwf
@@ -227,6 +228,9 @@ def main():
             hwf = [H, W, focal]
             images = torch.from_numpy(images)
             poses = torch.from_numpy(poses)
+        
+        print(H, W)
+
         # square patch for now (patch_w == patch_h)
         patch_size = int(H * cfg.dataset.patch_ratio)
         w_offset = patch_size // 2
@@ -371,14 +375,18 @@ def main():
             if cfg.nerf.use_viewdirs:
                 rays = torch.cat((rays, viewdirs), dim=-1)
 
-            cx = np.random.randint(w_offset, W - w_offset)
-            cy = np.random.randint(h_offset, H - h_offset)
-            inds = torch.arange(W*H).reshape(W, H)
-            select_inds = inds[cy-h_offset:cy+h_offset, 
-                               cx-w_offset:cx+w_offset].flatten()
-            rays = rays[select_inds]
-            target_rgb = img_target[cy-h_offset:cy+h_offset, 
-                                    cx-w_offset:cx+w_offset]
+            # sample random patch
+            if cfg.dataset.patch_ratio < 1.0:
+                cx = np.random.randint(w_offset, W - w_offset)
+                cy = np.random.randint(h_offset, H - h_offset)
+                inds = torch.arange(W*H).reshape(W, H)
+                select_inds = inds[cy-h_offset:cy+h_offset, 
+                                  cx-w_offset:cx+w_offset].flatten()
+                rays = rays[select_inds]
+                target_rgb = img_target[cy-h_offset:cy+h_offset, 
+                                        cx-w_offset:cx+w_offset]
+            else:
+                target_rgb = img_target
             
             # predict and render
             then = time.time()

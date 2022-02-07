@@ -57,6 +57,7 @@ def main():
                 cfg.dataset.basedir,
                 half_res=cfg.dataset.half_res,
                 testskip=cfg.dataset.testskip,
+                img_size=cfg.dataset.img_size
             )
             i_train, i_val, i_test = i_split
             H, W, focal = hwf
@@ -87,6 +88,8 @@ def main():
             hwf = [H, W, focal]
             images = torch.from_numpy(images)
             poses = torch.from_numpy(poses)
+        
+        print(H, W)
 
     # Seed experiment for repeatability
     seed = cfg.experiment.randomseed
