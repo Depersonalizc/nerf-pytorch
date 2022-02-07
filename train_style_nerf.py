@@ -23,6 +23,8 @@ from nerf.nerf_helpers import get_minibatches, sample_pdf_2 as sample_pdf
 from nerf.train_utils import run_network
 
 
+DEBUG_IDX = 28
+
 # use coarse only as probe
 def predict_and_render_fine_radiance(
     ray_batch,
@@ -351,7 +353,8 @@ def main():
                 encode_direction_fn=encode_direction_fn,
             )
         else:
-            img_idx = np.random.choice(i_train)
+            # img_idx = np.random.choice(i_train)
+            img_idx = DEBUG_IDX
             img_target = images[img_idx].to(device)
             pose_target = poses[img_idx, :3, :4].to(device)
             
@@ -463,7 +466,7 @@ def main():
                     )
                     target_ray_values = cache_dict["target"].to(device)
                 else:
-                    img_idx = np.random.choice(i_val)
+                    img_idx = DEBUG_IDX
                     img_target = images[img_idx].to(device)
                     pose_target = poses[img_idx, :3, :4].to(device)
                     ray_origins, ray_directions = get_ray_bundle(
