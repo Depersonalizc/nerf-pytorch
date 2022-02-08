@@ -279,8 +279,8 @@ def main():
     # Move loss targets to device manually 
     for sl in nst_vgg19.style_losses:
       sl._target = sl._target.to(device)
-    # for cl in nst_vgg19.content_losses:
-    #   cl._target = cl._target.to(device)
+    for cl in nst_vgg19.content_losses:
+      cl._target = cl._target.to(device)
     nst_vgg19.requires_grad_(False)
 
     # Initialize optimizer.
