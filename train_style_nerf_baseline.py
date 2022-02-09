@@ -4,8 +4,11 @@ import os
 import time
 
 import numpy as np
+from PIL import Image
 import torch
+import torch.nn.functional as F
 import torchvision
+from torchvision import transforms, models as vmodels
 import yaml
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm, trange
@@ -13,13 +16,133 @@ from tqdm import tqdm, trange
 from nerf import (CfgNode, get_embedding_function, get_ray_bundle, img2mse,
                   load_blender_data, load_llff_data, meshgrid_xy, models,
                   mse2psnr, run_one_iter_of_nerf)
+from style_transfer import NST_VGG19
+
+from nerf.volume_rendering_utils import volume_render_radiance_field
+from nerf.nerf_helpers import get_minibatches, sample_pdf_2 as sample_pdf
+from nerf.train_utils import run_network
+
+
+DEBUG_IDX = 28
+
+# use coarse only as probe
+def predict_and_render_fine_radiance(
+    ray_batch,
+    model_coarse,
+    model_fine,
+    options,
+    mode="train",
+    encode_position_fn=None,
+    encode_direction_fn=None,
+):
+    # TESTED
+    num_rays = ray_batch.shape[0]
+    ro, rd = ray_batch[..., :3], ray_batch[..., 3:6]
+    bounds = ray_batch[..., 6:8].view((-1, 1, 2))
+    near, far = bounds[..., 0], bounds[..., 1]
+
+    t_vals = torch.linspace(
+        0.0,
+        1.0,
+        getattr(options.nerf, mode).num_coarse,
+        dtype=ro.dtype,
+        device=ro.device,
+    )
+    if not getattr(options.nerf, mode).lindisp:
+        z_vals = near * (1.0 - t_vals) + far * t_vals
+    else:
+        z_vals = 1.0 / (1.0 / near * (1.0 - t_vals) + 1.0 / far * t_vals)
+    z_vals = z_vals.expand([num_rays, getattr(options.nerf, mode).num_coarse])
+
+    if getattr(options.nerf, mode).perturb:
+        # Get intervals between samples.
+        mids = 0.5 * (z_vals[..., 1:] + z_vals[..., :-1])
+        upper = torch.cat((mids, z_vals[..., -1:]), dim=-1)
+        lower = torch.cat((z_vals[..., :1], mids), dim=-1)
+        # Stratified samples in those intervals.
+        t_rand = torch.rand(z_vals.shape, dtype=ro.dtype, device=ro.device)
+        z_vals = lower + (upper - lower) * t_rand
+    # pts -> (num_rays, N_samples, 3)
+    pts = ro[..., None, :] + rd[..., None, :] * z_vals[..., :, None]
+
+    with torch.no_grad():
+        radiance_field = run_network(
+            model_coarse,
+            pts,
+            ray_batch,
+            getattr(options.nerf, mode).chunksize,
+            encode_position_fn,
+            encode_direction_fn,
+        )
+
+        (
+            rgb_coarse,
+            disp_coarse,
+            acc_coarse,
+            weights,
+            depth_coarse,
+        ) = volume_render_radiance_field(
+            radiance_field,
+            z_vals,
+            rd,
+            radiance_field_noise_std=getattr(options.nerf, mode).radiance_field_noise_std,
+            white_background=getattr(options.nerf, mode).white_background,
+            
+            render_rgb=False,
+            render_acc=False,
+            render_disp=False,
+            render_depth=False
+        )
+    radiance_field = None
+
+    rgb_fine, disp_fine, acc_fine = None, None, None
+    if getattr(options.nerf, mode).num_fine > 0:
+        # rgb_map_0, disp_map_0, acc_map_0 = rgb_map, disp_map, acc_map
+
+        z_vals_mid = 0.5 * (z_vals[..., 1:] + z_vals[..., :-1])
+        z_samples = sample_pdf(
+            z_vals_mid,
+            weights[..., 1:-1],
+            getattr(options.nerf, mode).num_fine,
+            det=(getattr(options.nerf, mode).perturb == 0.0),
+        )
+        z_samples = z_samples.detach()
+
+        z_vals, _ = torch.sort(torch.cat((z_vals, z_samples), dim=-1), dim=-1)
+        # pts -> (N_rays, N_samples + N_importance, 3)
+        pts = ro[..., None, :] + rd[..., None, :] * z_vals[..., :, None]
+
+        radiance_field = run_network(
+            model_fine,
+            pts,
+            ray_batch,
+            getattr(options.nerf, mode).chunksize,
+            encode_position_fn,
+            encode_direction_fn,
+        )
+        rgb_fine, _, _, _, _ = volume_render_radiance_field(
+            radiance_field,
+            z_vals,
+            rd,
+            radiance_field_noise_std=getattr(
+                options.nerf, mode
+            ).radiance_field_noise_std,
+            white_background=getattr(options.nerf, mode).white_background,
+
+            render_disp=False,
+            render_acc=False,
+            render_depth=False
+        )
+
+    return rgb_coarse, disp_coarse, acc_coarse, rgb_fine, disp_fine, acc_fine
 
 
 def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config", type=str, required=True, help="Path to (.yml) config file."
+        "--config", type=str, required=True, 
+        help="Path to (.yml) config file."
     )
     parser.add_argument(
         "--load-checkpoint",
@@ -34,6 +157,17 @@ def main():
     with open(configargs.config, "r") as f:
         cfg_dict = yaml.load(f, Loader=yaml.FullLoader)
         cfg = CfgNode(cfg_dict)
+
+    # Seed experiment for repeatability
+    seed = cfg.experiment.randomseed
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+    # Device on which to run.
+    if torch.cuda.is_available():
+        device = "cuda"
+    else:
+        device = "cpu"
 
     # # (Optional:) enable this to track autograd issues when debugging
     # torch.autograd.set_detect_anomaly(True)
@@ -66,7 +200,7 @@ def main():
             if cfg.nerf.train.white_background:
                 images = images[..., :3] * images[..., -1:] + (1.0 - images[..., -1:])
             else:
-                images = images[..., :3] * images[..., -1:]
+                images = images[..., :3]
         elif cfg.dataset.type.lower() == "llff":
             images, poses, bds, render_poses, i_test = load_llff_data(
                 cfg.dataset.basedir, factor=cfg.dataset.downsample_factor
@@ -93,17 +227,6 @@ def main():
         
         print(H, W)
 
-    # Seed experiment for repeatability
-    seed = cfg.experiment.randomseed
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-
-    # Device on which to run.
-    if torch.cuda.is_available():
-        device = "cuda"
-    else:
-        device = "cpu"
-
     encode_position_fn = get_embedding_function(
         num_encoding_functions=cfg.models.coarse.num_encoding_fn_xyz,
         include_input=cfg.models.coarse.include_input_xyz,
@@ -118,7 +241,7 @@ def main():
             log_sampling=cfg.models.coarse.log_sampling_dir,
         )
 
-    # Initialize a coarse-resolution model.
+    # Initialize a coarse model.
     model_coarse = getattr(models, cfg.models.coarse.type)(
         num_encoding_fn_xyz=cfg.models.coarse.num_encoding_fn_xyz,
         num_encoding_fn_dir=cfg.models.coarse.num_encoding_fn_dir,
@@ -127,22 +250,24 @@ def main():
         use_viewdirs=cfg.models.coarse.use_viewdirs,
     )
     model_coarse.to(device)
-    # If a fine-resolution model is specified, initialize it.
-    model_fine = None
-    if hasattr(cfg.models, "fine"):
-        model_fine = getattr(models, cfg.models.fine.type)(
-            num_encoding_fn_xyz=cfg.models.fine.num_encoding_fn_xyz,
-            num_encoding_fn_dir=cfg.models.fine.num_encoding_fn_dir,
-            include_input_xyz=cfg.models.fine.include_input_xyz,
-            include_input_dir=cfg.models.fine.include_input_dir,
-            use_viewdirs=cfg.models.fine.use_viewdirs,
-        )
-        model_fine.to(device)
+    # Initialize a fine model.
+    model_fine = getattr(models, cfg.models.fine.type)(
+        num_encoding_fn_xyz=cfg.models.fine.num_encoding_fn_xyz,
+        num_encoding_fn_dir=cfg.models.fine.num_encoding_fn_dir,
+        include_input_xyz=cfg.models.fine.include_input_xyz,
+        include_input_dir=cfg.models.fine.include_input_dir,
+        use_viewdirs=cfg.models.fine.use_viewdirs,
+    )
+    model_fine.to(device)
 
     # Initialize optimizer.
-    trainable_parameters = list(model_coarse.parameters())
-    if model_fine is not None:
-        trainable_parameters += list(model_fine.parameters())
+    trainable_parameters = []
+    for name, param in model_fine.named_parameters():
+        if name.split('.')[0] in {'fc_feat', 'layers_dir', 'fc_rgb'}:
+            trainable_parameters.append(param)
+            param.requires_grad = True
+        else:
+            param.requires_grad = False
     optimizer = getattr(torch.optim, cfg.optimizer.type)(
         trainable_parameters, lr=cfg.optimizer.lr
     )
@@ -157,23 +282,20 @@ def main():
 
     # By default, start at iteration 0 (unless a checkpoint is specified).
     start_iter = 0
-
     # Load an existing checkpoint, if a path is specified.
     if os.path.exists(configargs.load_checkpoint):
         checkpoint = torch.load(configargs.load_checkpoint)
         model_coarse.load_state_dict(checkpoint["model_coarse_state_dict"])
-        if checkpoint["model_fine_state_dict"]:
-            model_fine.load_state_dict(checkpoint["model_fine_state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        start_iter = checkpoint["iter"]
+        model_fine.load_state_dict(checkpoint["model_fine_state_dict"])
+        # optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        # start_iter = checkpoint["iter"]
 
     # # TODO: Prepare raybatch tensor if batching random rays
 
     for i in trange(start_iter, cfg.experiment.train_iters):
 
-        model_coarse.train()
-        if model_fine:
-            model_fine.train()
+        model_coarse.eval()
+        model_fine.train()
 
         rgb_coarse, rgb_fine = None, None
         target_ray_values = None
@@ -296,8 +418,7 @@ def main():
         ):
             tqdm.write("[VAL] =======> Iter: " + str(i))
             model_coarse.eval()
-            if model_fine:
-                model_coarse.eval()
+            model_fine.eval()
 
             start = time.time()
             with torch.no_grad():
@@ -322,6 +443,7 @@ def main():
                     target_ray_values = cache_dict["target"].to(device)
                 else:
                     img_idx = np.random.choice(i_val)
+                    # img_idx = DEBUG_IDX
                     img_target = images[img_idx].to(device)
                     pose_target = poses[img_idx, :3, :4].to(device)
                     ray_origins, ray_directions = get_ray_bundle(

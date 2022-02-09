@@ -41,8 +41,8 @@ class ContentLoss(nn.Module):
     self.loss = None
 
   def forward(self, input):
-    # self.loss = F.l1_loss(input, self._target)
-    self.loss = F.mse_loss(input, self._target)
+    self.loss = F.l1_loss(input, self._target)
+    # self.loss = F.mse_loss(input, self._target)
     return input
 
   def update_target(self, new_target):
@@ -76,8 +76,8 @@ class StyleLoss(nn.Module):
 
   def forward(self, input):
     G = self._gram_matrix(input)
-    # self.loss = F.l1_loss(G, self._target)
-    self.loss = F.mse_loss(G, self._target)
+    self.loss = F.l1_loss(G, self._target)
+    # self.loss = F.mse_loss(G, self._target)
     return input
 
 
@@ -101,7 +101,7 @@ def rename_vgg_layers(model):
       name = f'pool_{block}'
       # Average pooling was found to generate images of higher quality than
       # max pooling by Gatys et al.
-      # layer = nn.AvgPool2d(layer.kernel_size, layer.stride)
+      layer = nn.AvgPool2d(layer.kernel_size, layer.stride)
       block += 1
       number = 1
     else:
@@ -135,7 +135,7 @@ def init_nst_model_and_losses(
   for i, (name, layer) in enumerate(model.named_children()):
     nst_model.add_module(name, layer)
     if name in content_layers:
-      content_loss = ContentLoss(nst_model(torch.zeros([1, 3, 224, 224])))
+      content_loss = ContentLoss(nst_model(style_imgs[0]))
       nst_model.add_module(f'ContentLoss_{name}', content_loss)
       content_losses.append(content_loss)
       last_layer = i
