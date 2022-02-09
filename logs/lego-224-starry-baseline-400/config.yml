@@ -1,0 +1,82 @@
+dataset:
+  basedir: /content/data/nerf_synthetic_stylized/lego/starry_400
+  cachedir: cache/legocache200
+  far: 6
+  half_res: true
+  img_size: 224
+  near: 2
+  no_ndc: true
+  patch_ratio: 1.0
+  testskip: 1
+  type: blender
+experiment:
+  id: lego-224-starry-baseline-400
+  logdir: logs
+  print_every: 100
+  randomseed: 42
+  save_every: 5000
+  train_iters: 200000
+  validate_every: 1000
+models:
+  coarse:
+    hidden_size: 128
+    include_input_dir: true
+    include_input_xyz: true
+    log_sampling_dir: true
+    log_sampling_xyz: true
+    num_encoding_fn_dir: 4
+    num_encoding_fn_xyz: 10
+    num_layers: 8
+    skip_connect_every: 3
+    type: FlexibleNeRFModel
+    use_viewdirs: true
+  fine:
+    hidden_size: 128
+    include_input_dir: true
+    include_input_xyz: true
+    log_sampling_dir: true
+    log_sampling_xyz: true
+    num_encoding_fn_dir: 4
+    num_encoding_fn_xyz: 10
+    num_layers: 8
+    skip_connect_every: 3
+    type: FlexibleNeRFModel
+    use_viewdirs: true
+  style:
+    content_layers:
+    - relu3_2
+    content_weight: 1.0
+    style_layers:
+    - relu1_1
+    - relu2_1
+    - relu3_1
+    - relu4_1
+    - relu5_1
+    style_weight: 100.0
+nerf:
+  encode_direction_fn: positional_encoding
+  encode_position_fn: positional_encoding
+  train:
+    chunksize: 131072
+    lindisp: false
+    num_coarse: 64
+    num_fine: 64
+    num_random_rays: 1024
+    perturb: true
+    radiance_field_noise_std: 0.2
+    white_background: false
+  use_viewdirs: true
+  validation:
+    chunksize: 32768
+    lindisp: false
+    num_coarse: 64
+    num_fine: 64
+    perturb: false
+    radiance_field_noise_std: 0.0
+    white_background: false
+optimizer:
+  lr: 0.005
+  type: Adam
+scheduler:
+  lr_decay: 250
+  lr_decay_factor: 0.1
