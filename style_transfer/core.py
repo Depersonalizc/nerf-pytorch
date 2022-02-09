@@ -41,8 +41,8 @@ class ContentLoss(nn.Module):
     self.loss = None
 
   def forward(self, input):
-    self.loss = F.l1_loss(input, self._target)
-    # self.loss = F.mse_loss(input, self._target)
+    # self.loss = F.l1_loss(input, self._target)
+    self.loss = F.mse_loss(input, self._target)
     return input
 
   def update_target(self, new_target):
@@ -76,8 +76,8 @@ class StyleLoss(nn.Module):
 
   def forward(self, input):
     G = self._gram_matrix(input)
-    self.loss = F.l1_loss(G, self._target)
-    # self.loss = F.mse_loss(G, self._target)
+    # self.loss = F.l1_loss(G, self._target)
+    self.loss = F.mse_loss(G, self._target)
     return input
 
 
@@ -101,7 +101,7 @@ def rename_vgg_layers(model):
       name = f'pool_{block}'
       # Average pooling was found to generate images of higher quality than
       # max pooling by Gatys et al.
-      layer = nn.AvgPool2d(layer.kernel_size, layer.stride)
+      # layer = nn.AvgPool2d(layer.kernel_size, layer.stride)
       block += 1
       number = 1
     else:
