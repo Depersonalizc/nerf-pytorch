@@ -201,10 +201,11 @@ def main():
             H, W, focal = hwf
             H, W = int(H), int(W)
             hwf = [H, W, focal]
+
+            mask = images[..., -1:]
+            images = images[..., :3]
             if cfg.nerf.train.white_background:
-                images = images[..., :3] * images[..., -1:] + (1.0 - images[..., -1:])
-            else:
-                images = images[..., :3]
+                images = images * mask + (1.0 - mask)
         elif cfg.dataset.type.lower() == "llff":
             images, poses, bds, render_poses, i_test = load_llff_data(
                 cfg.dataset.basedir, factor=cfg.dataset.downsample_factor
@@ -281,6 +282,9 @@ def main():
       sl._target = sl._target.to(device)
     for cl in nst_vgg19.content_losses:
       cl._target = cl._target.to(device)
+    style_img = style_img.to(device)
+
+    # No grad required for vgg model
     nst_vgg19.requires_grad_(False)
 
     # Initialize optimizer.
@@ -361,6 +365,7 @@ def main():
             # img_idx = DEBUG_IDX
             img_target = images[img_idx].to(device)
             pose_target = poses[img_idx, :3, :4].to(device)
+            mask_target = mask[img_idx].to(device)
             
             ray_origins, ray_directions = get_ray_bundle(H, W, focal, pose_target)
             viewdirs = ray_directions
@@ -406,19 +411,24 @@ def main():
         rgb_fine = F.interpolate(
             rgb_fine.movedim(-1, 0)[None], 
             size=(224, 224), mode='bilinear')
-        # rf = rf[0].movedim(0, -1)
 
         target_rgb = F.interpolate(
             target_rgb.movedim(-1, 0)[None],
             size=(224, 224), mode='bilinear')
-        # target_rgb = target_rgb[0].movedim(0, -1)
 
         optimizer.zero_grad()
-        content_loss, style_loss = 0, 0
         nst_vgg19.update_content(target_rgb)
+
+        content_loss = 0
         nst_vgg19(rgb_fine)  # forward pass
         for cl in nst_vgg19.content_losses:
             content_loss += cfg.models.style.content_weight * cl.loss
+
+        style_loss = 0
+        # set style image as background
+        mask_target = mask_target.movedim(-1, 0)[None]
+        rgb_fine = rgb_fine * mask_target + style_img * (1 - mask_target)
+        nst_vgg19(rgb_fine)  # forward pass
         for sl in nst_vgg19.style_losses:
             style_loss += cfg.models.style.style_weight * sl.loss
         loss = content_loss + style_loss 
@@ -442,6 +452,14 @@ def main():
         writer.add_scalar("train/loss", loss.item(), i)
         writer.add_scalar("train/content_loss", content_loss.item(), i)
         writer.add_scalar("train/style_loss", style_loss.item(), i)
+
+        if i == 0:
+            rgb_fine = rgb_fine.cpu().detach()
+            rgb_fine = rgb_fine[0].movedim(0, -1)
+            rgb_fine = (rgb_fine.numpy() * 255).astype(np.uint8)
+            im = Image.fromarray(rgb_fine)
+            im.save('/content/hi.png')
+            print('saved at /content/hi.png')
 
         # Validation
         if (
