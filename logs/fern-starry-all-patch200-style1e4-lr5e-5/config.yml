@@ -1,0 +1,78 @@
+dataset:
+  basedir: /content/data/nerf_llff_data/fern
+  downsample_factor: 8
+  far: 1
+  llffhold: 8
+  near: 0
+  no_ndc: false
+  patch_size: 200
+  type: llff
+experiment:
+  id: fern-starry-all-patch200-style1e4-lr5e-5
+  logdir: logs
+  print_every: 100
+  randomseed: 34
+  save_every: 500
+  train_iters: 250000
+  validate_every: 100
+models:
+  coarse:
+    hidden_size: 64
+    include_input_dir: true
+    include_input_xyz: true
+    log_sampling_dir: true
+    log_sampling_xyz: true
+    num_encoding_fn_dir: 4
+    num_encoding_fn_xyz: 6
+    num_layers: 4
+    skip_connect_every: 3
+    type: FlexibleNeRFModel
+    use_viewdirs: true
+  fine:
+    hidden_size: 64
+    include_input_dir: true
+    include_input_xyz: true
+    num_encoding_fn_dir: 4
+    num_encoding_fn_xyz: 6
+    num_layers: 4
+    skip_connect_every: 3
+    type: FlexibleNeRFModel
+    use_viewdirs: true
+  style:
+    content_layers:
+    - relu3_2
+    content_weight: 1.0
+    style_layers:
+    - relu1_1
+    - relu2_1
+    - relu3_1
+    - relu4_1
+    - relu5_1
+    style_weight: 10000.0
+nerf:
+  encode_direction_fn: positional_encoding
+  encode_position_fn: positional_encoding
+  train:
+    chunksize: 131072
+    lindisp: false
+    num_coarse: 64
+    num_fine: 64
+    num_random_rays: 4096
+    perturb: true
+    radiance_field_noise_std: 1.0
+    white_background: false
+  use_viewdirs: true
+  validation:
+    chunksize: 16384
+    lindisp: false
+    num_coarse: 64
+    num_fine: 64
+    perturb: false
+    radiance_field_noise_std: 0.0
+    white_background: false
+optimizer:
+  lr: 5.0e-05
+  type: Adam
+scheduler:
+  lr_decay: 250
+  lr_decay_factor: 0.1

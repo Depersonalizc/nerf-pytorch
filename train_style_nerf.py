@@ -19,7 +19,7 @@ from nerf import (CfgNode, get_embedding_function, get_ray_bundle, img2mse,
 from style_transfer import NST_VGG19
 
 from nerf.volume_rendering_utils import volume_render_radiance_field
-from nerf.nerf_helpers import get_minibatches, sample_pdf_2 as sample_pdf
+from nerf.nerf_helpers import get_minibatches, ndc_rays, sample_pdf_2 as sample_pdf
 from nerf.train_utils import run_network
 
 
@@ -206,6 +206,8 @@ def main():
             images = images[..., :3]
             if cfg.nerf.train.white_background:
                 images = images * mask + (1.0 - mask)
+            patch_size = int(H * cfg.dataset.patch_ratio)
+
         elif cfg.dataset.type.lower() == "llff":
             images, poses, bds, render_poses, i_test = load_llff_data(
                 cfg.dataset.basedir, factor=cfg.dataset.downsample_factor
@@ -229,13 +231,16 @@ def main():
             hwf = [H, W, focal]
             images = torch.from_numpy(images)
             poses = torch.from_numpy(poses)
-        
-        print(H, W)
 
+            patch_size = cfg.dataset.patch_size
+        
         # square patch for now (patch_w == patch_h)
-        patch_size = int(H * cfg.dataset.patch_ratio)
-        w_offset = patch_size // 2
-        h_offset = patch_size // 2
+        p_w = p_h = patch_size
+        print('image size (H, W):', H, W)
+        print('patch size (p_h, p_w):', p_h, p_w)
+
+        # w_offset = patch_size // 2
+        # h_offset = patch_size // 2
 
     encode_position_fn = get_embedding_function(
         num_encoding_functions=cfg.models.coarse.num_encoding_fn_xyz,
@@ -365,15 +370,21 @@ def main():
             # img_idx = DEBUG_IDX
             img_target = images[img_idx].to(device)
             pose_target = poses[img_idx, :3, :4].to(device)
-            mask_target = mask[img_idx].to(device)
+            # mask_target = mask[img_idx].to(device)
             
             ray_origins, ray_directions = get_ray_bundle(H, W, focal, pose_target)
             viewdirs = ray_directions
             viewdirs = viewdirs / viewdirs.norm(p=2, dim=-1).unsqueeze(-1)
             viewdirs = viewdirs.view((-1, 3))
 
-            ro = ray_origins.view((-1, 3))
-            rd = ray_directions.view((-1, 3))
+            if cfg.dataset.no_ndc is False:
+                ro, rd = ndc_rays(H, W, focal, 1.0, ray_origins, ray_directions)
+                ro = ro.view((-1, 3))
+                rd = rd.view((-1, 3))
+            else:
+                ro = ray_origins.view((-1, 3))
+                rd = ray_directions.view((-1, 3))
+
             near = cfg.dataset.near * torch.ones_like(rd[..., :1])
             far = cfg.dataset.far * torch.ones_like(rd[..., :1])
             rays = torch.cat((ro, rd, near, far), dim=-1)
@@ -381,15 +392,16 @@ def main():
                 rays = torch.cat((rays, viewdirs), dim=-1)
 
             # sample random patch
-            if cfg.dataset.patch_ratio < 1.0:
-                cx = np.random.randint(w_offset, W - w_offset)
-                cy = np.random.randint(h_offset, H - h_offset)
-                inds = torch.arange(W*H).reshape(W, H)
-                select_inds = inds[cy-h_offset:cy+h_offset, 
-                                  cx-w_offset:cx+w_offset].flatten()
+            if (p_h != H or p_w != W):
+                tl_h = np.random.randint(0, H-p_h+1)
+                tl_w = np.random.randint(0, W-p_w+1)
+                inds = torch.arange(W*H).reshape(H, W)
+                select_inds = inds[tl_h:tl_h+p_h,
+                                   tl_w:tl_w+p_w].flatten()
                 rays = rays[select_inds]
-                target_rgb = img_target[cy-h_offset:cy+h_offset, 
-                                        cx-w_offset:cx+w_offset]
+                target_rgb = img_target[tl_h:tl_h+p_h,
+                                        tl_w:tl_w+p_w]
+                print(rays.shape, target_rgb.shape)
             else:
                 target_rgb = img_target
             
@@ -420,15 +432,16 @@ def main():
         nst_vgg19.update_content(target_rgb)
 
         content_loss = 0
+        style_loss = 0
         nst_vgg19(rgb_fine)  # forward pass
         for cl in nst_vgg19.content_losses:
             content_loss += cfg.models.style.content_weight * cl.loss
 
-        style_loss = 0
-        # set style image as background
-        mask_target = mask_target.movedim(-1, 0)[None]
-        rgb_fine = rgb_fine * mask_target + style_img * (1 - mask_target)
-        nst_vgg19(rgb_fine)  # forward pass
+        # # set style image as background
+        # mask_target = mask_target.movedim(-1, 0)[None]
+        # rgb_fine = rgb_fine * mask_target + style_img * (1 - mask_target)
+        # nst_vgg19(rgb_fine)  # forward pass
+
         for sl in nst_vgg19.style_losses:
             style_loss += cfg.models.style.style_weight * sl.loss
         loss = content_loss + style_loss 
