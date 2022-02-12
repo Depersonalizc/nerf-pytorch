@@ -1,26 +1,26 @@
 # Parameters to setup experiment.
 experiment:
   # Unique experiment identifier
-  id: llff
+  id: llff-flower
   # Experiment logs will be stored at "logdir"/"id"
   logdir: logs
   # Seed for random number generators (for repeatability).
   randomseed: 34  # 8239
   # Number of training iterations.
-  train_iters: 250000
+  train_iters: 200000
   # Number of training iterations after which to validate.
-  validate_every: 50
+  validate_every: 1000
   # Number of training iterations after which to checkpoint.
   save_every: 5000
   # Number of training iterations after which to print progress.
-  print_every: 100
+  print_every: 500
 
 # Dataset parameters.
 dataset:
   # Type of the dataset (Blender vs LLFF vs DeepVoxels vs something else)
   type: llff
   # Base directory of dataset.
-  basedir: cache/nerf_llff_data/fern
+  basedir: /content/data/nerf_llff_data/flower
   # Optionally, provide a path to the pre-cached dataset dir. This
   # overrides the other dataset options.
   # cachedir: cache/legocache200
@@ -53,6 +53,9 @@ models:
     # Whether to include the position (xyz) itself in its positional
     # encoding.
     include_input_xyz: True
+    # Whether or not to perform log sampling in the positional encoding
+    # of the coordinates.
+    log_sampling_xyz: True
     # Number of encoding functions to use in the positional encoding
     # of the coordinates.
     num_encoding_fn_xyz: 6
@@ -63,6 +66,10 @@ models:
     # Number of encoding functions to use in the positional encoding
     # of the direction.
     num_encoding_fn_dir: 4
+    # Whether or not to perform log sampling in the positional encoding
+    # of the direction.
+    log_sampling_dir: True
+
   # Fine model.
   fine:
     # Name of the torch.nn.Module class that implements the model.
@@ -95,6 +102,10 @@ optimizer:
   type: Adam
   # Learning rate.
   lr: 5.0E-3
+
+scheduler:
+  lr_decay: 250
+  lr_decay_factor: 0.1
 
 # NeRF parameters.
 nerf:
