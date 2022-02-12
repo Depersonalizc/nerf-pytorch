@@ -1,7 +1,7 @@
 # Parameters to setup experiment.
 experiment:
   # Unique experiment identifier
-  id: fern-starry-all-patch200-style1e5-lr5e-3
+  id: orchids-starry-all-patch200-style1e5-lr5e-3
   # Experiment logs will be stored at "logdir"/"id"
   logdir: logs
   # Seed for random number generators (for repeatability).
@@ -20,7 +20,7 @@ dataset:
   # Type of the dataset (Blender vs LLFF vs DeepVoxels vs something else)
   type: llff
   # Base directory of dataset.
-  basedir: /content/data/nerf_llff_data/fern
+  basedir: /content/data/nerf_llff_data/orchids
   # Optionally, provide a path to the pre-cached dataset dir. This
   # overrides the other dataset options.
   # cachedir: cache/legocache200

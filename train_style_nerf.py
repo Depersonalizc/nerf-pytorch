@@ -5,6 +5,7 @@ import time
 
 import numpy as np
 from PIL import Image
+from numpy.core.numeric import False_
 import torch
 import torch.nn.functional as F
 import torchvision
@@ -377,7 +378,8 @@ def main():
             viewdirs = viewdirs / viewdirs.norm(p=2, dim=-1).unsqueeze(-1)
             viewdirs = viewdirs.view((-1, 3))
 
-            if cfg.dataset.no_ndc is False:
+            # if cfg.dataset.no_ndc is False:
+            if False:
                 ro, rd = ndc_rays(H, W, focal, 1.0, ray_origins, ray_directions)
                 ro = ro.view((-1, 3))
                 rd = rd.view((-1, 3))
