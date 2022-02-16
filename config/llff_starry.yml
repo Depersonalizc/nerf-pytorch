@@ -1,7 +1,7 @@
 # Parameters to setup experiment.
 experiment:
   # Unique experiment identifier
-  id: orchids-starry-all-patch200-style1e5-lr5e-3
+  id: orchids-starry-all-patch200-style3e4-lr5e-3-fc_alpha
   # Experiment logs will be stored at "logdir"/"id"
   logdir: logs
   # Seed for random number generators (for repeatability).
@@ -43,7 +43,7 @@ models:
   # Style transfer.
   style:
     content_weight: 1.0
-    style_weight: 100000.0
+    style_weight: 30000.0
     content_layers: ['relu3_2']
     style_layers: ['relu1_1', 'relu2_1', 'relu3_1', 'relu4_1', 'relu5_1']
   # Coarse model.

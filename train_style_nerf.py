@@ -293,7 +293,7 @@ def main():
     # Initialize optimizer.
     trainable_parameters = []
     for name, param in model_fine.named_parameters():
-        if name.split('.')[0] in {'fc_feat', 'layers_dir', 'fc_rgb'}:
+        if name.split('.')[0] in {'fc_feat', 'layers_dir', 'fc_rgb', 'fc_alpha'}:
             trainable_parameters.append(param)
             param.requires_grad = True
         else:
