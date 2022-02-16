@@ -240,9 +240,6 @@ def main():
         print('image size (H, W):', H, W)
         print('patch size (p_h, p_w):', p_h, p_w)
 
-        # w_offset = patch_size // 2
-        # h_offset = patch_size // 2
-
     encode_position_fn = get_embedding_function(
         num_encoding_functions=cfg.models.coarse.num_encoding_fn_xyz,
         include_input=cfg.models.coarse.include_input_xyz,
@@ -317,17 +314,20 @@ def main():
     start_iter = 0
     # Load an existing checkpoint, if a path is specified.
     if os.path.exists(configargs.load_checkpoint):
+        print(f'loading from {configargs.load_checkpoint}...')
         checkpoint = torch.load(configargs.load_checkpoint)
         model_coarse.load_state_dict(checkpoint["model_coarse_state_dict"])
         model_fine.load_state_dict(checkpoint["model_fine_state_dict"])
         # optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         # start_iter = checkpoint["iter"]
+    else:
+        print(f'No ckpt found at {configargs.load_checkpoint}, starting anew...')
 
     # # TODO: Prepare raybatch tensor if batching random rays
 
     for i in trange(start_iter, cfg.experiment.train_iters):
 
-        model_coarse.eval()
+        model_coarse.train()
         model_fine.train()
 
         rgb_coarse, rgb_fine = None, None
@@ -372,14 +372,14 @@ def main():
             img_target = images[img_idx].to(device)
             pose_target = poses[img_idx, :3, :4].to(device)
             # mask_target = mask[img_idx].to(device)
-            
+
             ray_origins, ray_directions = get_ray_bundle(H, W, focal, pose_target)
+            
             viewdirs = ray_directions
             viewdirs = viewdirs / viewdirs.norm(p=2, dim=-1).unsqueeze(-1)
             viewdirs = viewdirs.view((-1, 3))
 
-            # if cfg.dataset.no_ndc is False:
-            if False:
+            if cfg.dataset.no_ndc is False:
                 ro, rd = ndc_rays(H, W, focal, 1.0, ray_origins, ray_directions)
                 ro = ro.view((-1, 3))
                 rd = rd.view((-1, 3))
@@ -561,6 +561,15 @@ def main():
                     + " Time: "
                     + str(time.time() - start)
                 )
+
+                if i == 0:
+                    rgb_fine = rgb_fine.cpu().detach()
+                    rgb_fine = rgb_fine[0].movedim(0, -1)
+                    rgb_fine = (rgb_fine.numpy() * 255).astype(np.uint8)
+                    im = Image.fromarray(rgb_fine)
+                    im.save('/content/hi_val.png')
+                    print('saved at /content/hi_val.png')
+
 
         if i % cfg.experiment.save_every == 0 or i == cfg.experiment.train_iters - 1:
             checkpoint_dict = {

@@ -7,7 +7,7 @@ experiment:
   # Seed for random number generators (for repeatability).
   randomseed: 34  # 8239
   # Number of training iterations.
-  train_iters: 200000
+  train_iters: 250000
   # Number of training iterations after which to validate.
   validate_every: 1000
   # Number of training iterations after which to checkpoint.

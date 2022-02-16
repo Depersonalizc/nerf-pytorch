@@ -160,12 +160,15 @@ def main():
 
     # Load an existing checkpoint, if a path is specified.
     if os.path.exists(configargs.load_checkpoint):
+        print(f'loading from {configargs.load_checkpoint}...')
         checkpoint = torch.load(configargs.load_checkpoint)
         model_coarse.load_state_dict(checkpoint["model_coarse_state_dict"])
         if checkpoint["model_fine_state_dict"]:
             model_fine.load_state_dict(checkpoint["model_fine_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         start_iter = checkpoint["iter"]
+    else:
+        print(f'No ckpt found at {configargs.load_checkpoint}, starting anew...')
 
     # # TODO: Prepare raybatch tensor if batching random rays
 
