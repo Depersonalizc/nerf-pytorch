@@ -35,15 +35,19 @@ dataset:
   downsample_factor: 8
   # TODO: Add description
   llffhold: 8
+
   # Patch size in pixels (square)
-  patch_size: 200
+  patch_size: 128
+  # Directory to proxy images (initialization)
+  proxydir: /content/data/nerf_llff_stylized/orchids/images_8
 
 # Model parameters.
 models:
   # Style transfer.
   style:
     content_weight: 1.0
-    style_weight: 30000.0
+    style_weight: 1000000.0
+    sim_weight: 100.0
     content_layers: ['relu3_2']
     style_layers: ['relu1_1', 'relu2_1', 'relu3_1', 'relu4_1', 'relu5_1']
   # Coarse model.
@@ -108,8 +112,10 @@ models:
 optimizer:
   # Name of the torch.optim class used for optimization.
   type: Adam
-  # Learning rate.
+  # Learning rate for nerf.
   lr: 5.0E-3
+  # Learning rate for proxy images.
+  lr_proxy: 5.0E-2
 
 scheduler:
   lr_decay: 250

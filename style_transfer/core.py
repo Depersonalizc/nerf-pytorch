@@ -183,7 +183,7 @@ class NST_VGG19(nn.Module):
         # if name.startswith('Content'):
         if isinstance(layer, ContentLoss):
           layer.update_target(x)
-          break
+          break  # assume single content loss
         else:
           x = layer(x)
 

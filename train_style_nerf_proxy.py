@@ -240,6 +240,25 @@ def main():
         print('image size (H, W):', H, W)
         print('patch size (p_h, p_w):', p_h, p_w)
 
+        # load all proxy images
+        if hasattr(cfg.dataset, "proxydir") and os.path.exists(cfg.dataset.proxydir):
+            print(f'loading proxy images from {cfg.dataset.proxydir}...')
+            imgdirs = sorted(
+                [os.path.join(cfg.dataset.proxydir, name)
+                for name in os.listdir(cfg.dataset.proxydir)
+                if name[-4:].lower() in {'.png', '.jpg', '.jpeg'}]
+            )
+            proxy_imgs = [
+                torch.from_numpy(
+                    np.array(Image.open(p), 
+                    dtype=np.float32)
+                ) / 255
+                for p in imgdirs
+            ]
+        else:
+            print('Init proxy images as content images...')
+            proxy_imgs = images
+
     encode_position_fn = get_embedding_function(
         num_encoding_functions=cfg.models.coarse.num_encoding_fn_xyz,
         include_input=cfg.models.coarse.include_input_xyz,
@@ -272,10 +291,9 @@ def main():
         use_viewdirs=cfg.models.fine.use_viewdirs,
     )
     model_fine.to(device)
-    # Load style image & Initialize VGG model
+    # Initialize VGG model w/ style image
     assert os.path.exists(configargs.style_image)
     style_img = transforms.ToTensor()(Image.open(configargs.style_image))[None]
-    # style_img = F.interpolate(style_img, size=(224, 224), mode='bilinear')
     nst_vgg19 = NST_VGG19([style_img],
                           cfg.models.style.content_layers,
                           cfg.models.style.style_layers)
@@ -287,20 +305,27 @@ def main():
       cl._target = cl._target.to(device)
     style_img = style_img.to(device)
 
-    # No grad required for vgg model
+    # Disable grad update for VGG model
     nst_vgg19.requires_grad_(False)
 
+    # Filter proxy images (train set only)
+    proxy_imgs = [
+        proxy_imgs[i].to(device).requires_grad_()
+        for i in i_train
+    ]
     # Initialize optimizer.
-    trainable_parameters = []
+    nerf_parameters = []
     for name, param in model_fine.named_parameters():
         if name.split('.')[0] in {'fc_feat', 'layers_dir', 'fc_rgb'}:
-            trainable_parameters.append(param)
+            nerf_parameters.append(param)
             param.requires_grad = True
         else:
             param.requires_grad = False
-    optimizer = getattr(torch.optim, cfg.optimizer.type)(
-        trainable_parameters, lr=cfg.optimizer.lr
-    )
+
+    optimizer = getattr(torch.optim, cfg.optimizer.type)([
+        {'params': nerf_parameters, 'lr': cfg.optimizer.lr},
+        {'params': proxy_imgs, 'lr': cfg.optimizer.lr_proxy}
+    ])
 
     # Setup logging.
     logdir = os.path.join(cfg.experiment.logdir, cfg.experiment.id)
@@ -367,11 +392,13 @@ def main():
                 encode_direction_fn=encode_direction_fn,
             )
         else:
-            img_idx = np.random.choice(i_train)
+            p_idx = np.random.choice(np.arange(len(proxy_imgs)))
+            img_idx = i_train[p_idx]
             # img_idx = DEBUG_IDX
+
+            proxy_target = proxy_imgs[p_idx]  # (H, W, 3)
             img_target = images[img_idx].to(device)
             pose_target = poses[img_idx, :3, :4].to(device)
-            # mask_target = mask[img_idx].to(device)
 
             ray_origins, ray_directions = get_ray_bundle(H, W, focal, pose_target)
             
@@ -393,7 +420,7 @@ def main():
             if cfg.nerf.use_viewdirs:
                 rays = torch.cat((rays, viewdirs), dim=-1)
 
-            # sample random patch
+            # sample a random patch
             if (p_h != H or p_w != W):
                 tl_h = np.random.randint(0, H-p_h+1)
                 tl_w = np.random.randint(0, W-p_w+1)
@@ -401,11 +428,11 @@ def main():
                 select_inds = inds[tl_h:tl_h+p_h,
                                    tl_w:tl_w+p_w].flatten()
                 rays = rays[select_inds]
-                target_rgb = img_target[tl_h:tl_h+p_h,
-                                        tl_w:tl_w+p_w]
+                target_rgb = proxy_target[tl_h:tl_h+p_h,
+                                          tl_w:tl_w+p_w]
                 print(rays.shape, target_rgb.shape)
             else:
-                target_rgb = img_target
+                target_rgb = proxy_target
             
             # predict and render
             then = time.time()
@@ -422,20 +449,18 @@ def main():
             )
 
         rgb_fine = rgb_fine.reshape_as(target_rgb)
-        rgb_fine = F.interpolate(
-            rgb_fine.movedim(-1, 0)[None], 
-            size=(224, 224), mode='bilinear')
+        sim_loss = F.mse_loss(rgb_fine, target_rgb)
+        sim_loss = sim_loss * cfg.models.style.sim_weight
 
-        target_rgb = F.interpolate(
-            target_rgb.movedim(-1, 0)[None],
-            size=(224, 224), mode='bilinear')
+        img_target = img_target.movedim(-1, 0)[None]
+        nst_vgg19.update_content(img_target)
+        proxy_target_ = proxy_target.movedim(-1, 0)[None]
 
         optimizer.zero_grad()
-        nst_vgg19.update_content(target_rgb)
 
         content_loss = 0
         style_loss = 0
-        nst_vgg19(rgb_fine)  # forward pass
+        nst_vgg19(proxy_target_)  # forward pass
         for cl in nst_vgg19.content_losses:
             content_loss += cfg.models.style.content_weight * cl.loss
 
@@ -446,36 +471,40 @@ def main():
 
         for sl in nst_vgg19.style_losses:
             style_loss += cfg.models.style.style_weight * sl.loss
-        loss = content_loss + style_loss 
+        
+        loss = content_loss + style_loss + sim_loss
         loss.backward()
         optimizer.step()
+        
+        # Range correction
+        with torch.no_grad():
+            proxy_target.clamp_(0, 1)
 
         # Learning rate updates
         num_decay_steps = cfg.scheduler.lr_decay * 1000
         lr_new = cfg.optimizer.lr * (
             cfg.scheduler.lr_decay_factor ** (i / num_decay_steps)
         )
-        for param_group in optimizer.param_groups:
-            param_group["lr"] = lr_new
-
+        optimizer.param_groups[0]['lr'] = lr_new
         if i % cfg.experiment.print_every == 0 or i == cfg.experiment.train_iters - 1:
             tqdm.write(
-                f"[TRAIN] Iter: {i} "
-                f"Loss: {loss.item()} "
-                f"= {content_loss.item()} + {style_loss.item()}"
+                f"[TRAIN] Iter: {i}  "
+                f"Loss: {loss.item():.4f} "
+                f"= (C){content_loss.item():.4f} + (S){style_loss.item():.4f} + (Sim){sim_loss.item():.4f}"
             )
-        writer.add_scalar("train/loss", loss.item(), i)
-        writer.add_scalar("train/content_loss", content_loss.item(), i)
-        writer.add_scalar("train/style_loss", style_loss.item(), i)
+
+        # writer.add_scalar("train/loss", loss.item(), i)
+        # writer.add_scalar("train/content_loss", content_loss.item(), i)
+        # writer.add_scalar("train/style_loss", style_loss.item(), i)
+        # writer.add_scalar("train/sim_loss", sim_loss.item(), i)
 
         if i == 0:
-            rgb_fine = rgb_fine.cpu().detach()
-            rgb_fine = rgb_fine[0].movedim(0, -1)
-            rgb_fine = (rgb_fine.numpy() * 255).astype(np.uint8)
-            im = Image.fromarray(rgb_fine)
-            im.save('/content/hi.png')
-            print('saved at /content/hi.png')
-
+            im = Image.fromarray(
+                (proxy_target.cpu().detach().numpy() * 255).astype(np.uint8)
+            )
+            im.save(f'/content/proxy_{p_idx}.png')
+            print(f'saved at /content/proxy_{p_idx}.png')
+        assert False
         # Validation
         if (
             i % cfg.experiment.validate_every == 0
