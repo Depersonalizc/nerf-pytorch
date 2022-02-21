@@ -25,6 +25,7 @@ from nerf.train_utils import run_network
 
 
 DEBUG_IDX = 28
+DEBUG_P_IDX = 0
 
 # use coarse only as probe
 def predict_and_render_fine_radiance(
@@ -392,7 +393,8 @@ def main():
                 encode_direction_fn=encode_direction_fn,
             )
         else:
-            p_idx = np.random.choice(np.arange(len(proxy_imgs)))
+            p_idx = DEBUG_P_IDX
+            # p_idx = np.random.choice(np.arange(len(proxy_imgs)))
             img_idx = i_train[p_idx]
             # img_idx = DEBUG_IDX
 
@@ -454,6 +456,10 @@ def main():
 
         img_target = img_target.movedim(-1, 0)[None]
         nst_vgg19.update_content(img_target)
+
+        # Range correction
+        with torch.no_grad():
+            proxy_target = proxy_target.clamp(0, 1)
         proxy_target_ = proxy_target.movedim(-1, 0)[None]
 
         optimizer.zero_grad()
@@ -476,10 +482,6 @@ def main():
         loss.backward()
         optimizer.step()
         
-        # Range correction
-        with torch.no_grad():
-            proxy_target.clamp_(0, 1)
-
         # Learning rate updates
         num_decay_steps = cfg.scheduler.lr_decay * 1000
         lr_new = cfg.optimizer.lr * (
@@ -493,18 +495,18 @@ def main():
                 f"= (C){content_loss.item():.4f} + (S){style_loss.item():.4f} + (Sim){sim_loss.item():.4f}"
             )
 
-        # writer.add_scalar("train/loss", loss.item(), i)
-        # writer.add_scalar("train/content_loss", content_loss.item(), i)
-        # writer.add_scalar("train/style_loss", style_loss.item(), i)
-        # writer.add_scalar("train/sim_loss", sim_loss.item(), i)
+        writer.add_scalar("train/loss", loss.item(), i)
+        writer.add_scalar("train/content_loss", content_loss.item(), i)
+        writer.add_scalar("train/style_loss", style_loss.item(), i)
+        writer.add_scalar("train/sim_loss", sim_loss.item(), i)
 
-        if i == 0:
-            im = Image.fromarray(
-                (proxy_target.cpu().detach().numpy() * 255).astype(np.uint8)
-            )
-            im.save(f'/content/proxy_{p_idx}.png')
-            print(f'saved at /content/proxy_{p_idx}.png')
-        assert False
+        # if i == 0:
+        #     im = Image.fromarray(
+        #         (proxy_target.cpu().detach().numpy() * 255).astype(np.uint8)
+        #     )
+        #     im.save(f'/content/proxy_{p_idx}.png')
+        #     print(f'saved at /content/proxy_{p_idx}.png')
+        # assert False
         # Validation
         if (
             i % cfg.experiment.validate_every == 0
@@ -536,7 +538,10 @@ def main():
                     )
                     target_ray_values = cache_dict["target"].to(device)
                 else:
-                    img_idx = np.random.choice(i_val)
+                    p_idx = DEBUG_P_IDX
+                    img_idx = i_train[p_idx]
+
+                    # img_idx = np.random.choice(i_val)
                     # img_idx = DEBUG_IDX
                     img_target = images[img_idx].to(device)
                     pose_target = poses[img_idx, :3, :4].to(device)
@@ -591,13 +596,31 @@ def main():
                     + str(time.time() - start)
                 )
 
-                if i == 0:
-                    rgb_fine = rgb_fine.cpu().detach()
-                    rgb_fine = rgb_fine[0].movedim(0, -1)
-                    rgb_fine = (rgb_fine.numpy() * 255).astype(np.uint8)
-                    im = Image.fromarray(rgb_fine)
-                    im.save('/content/hi_val.png')
-                    print('saved at /content/hi_val.png')
+                p_idx = DEBUG_P_IDX
+                proxy_target = proxy_imgs[p_idx]  # (H, W, 3)
+                img_idx = i_train[p_idx]
+                writer.add_image(
+                    f"proxy/{img_idx}",
+                    cast_to_image(proxy_target[..., :3].clamp(0, 1)),
+                    i,
+                )
+
+                # if i % 500 == 0:
+                #     for p_idx, proxy_target in enumerate(proxy_imgs):
+                #         img_idx = i_train[p_idx]
+                #         writer.add_image(
+                #             f"proxy/{img_idx}",
+                #             cast_to_image(proxy_target[..., :3].clamp(0, 1)),
+                #             i,
+                #         )
+
+                # if i == 0:
+                #     rgb_fine = rgb_fine.cpu().detach()
+                #     rgb_fine = rgb_fine[0].movedim(0, -1)
+                #     rgb_fine = (rgb_fine.numpy() * 255).astype(np.uint8)
+                #     im = Image.fromarray(rgb_fine)
+                #     im.save('/content/hi_val.png')
+                #     print('saved at /content/hi_val.png')
 
 
         if i % cfg.experiment.save_every == 0 or i == cfg.experiment.train_iters - 1:

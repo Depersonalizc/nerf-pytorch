@@ -1,7 +1,7 @@
 # Parameters to setup experiment.
 experiment:
   # Unique experiment identifier
-  id: orchids-starry-all-patch200-style3e4-lr5e-3-fc_alpha
+  id: orchids-starry-style3e5-lr_proxy0e-3-sim3e2-debug
   # Experiment logs will be stored at "logdir"/"id"
   logdir: logs
   # Seed for random number generators (for repeatability).
@@ -46,8 +46,8 @@ models:
   # Style transfer.
   style:
     content_weight: 1.0
-    style_weight: 1000000.0
-    sim_weight: 100.0
+    style_weight: 300000.0
+    sim_weight: 300.0
     content_layers: ['relu3_2']
     style_layers: ['relu1_1', 'relu2_1', 'relu3_1', 'relu4_1', 'relu5_1']
   # Coarse model.
@@ -115,7 +115,7 @@ optimizer:
   # Learning rate for nerf.
   lr: 5.0E-3
   # Learning rate for proxy images.
-  lr_proxy: 5.0E-2
+  lr_proxy: 0.0E-3
 
 scheduler:
   lr_decay: 250
