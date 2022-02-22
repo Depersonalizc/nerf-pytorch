@@ -1,3 +1,4 @@
+from os import XATTR_CREATE
 import torch
 
 
@@ -194,7 +195,7 @@ class FlexibleNeRFModel(torch.nn.Module):
         include_input_dir=True,
         use_viewdirs=True,
     ):
-        super(FlexibleNeRFModel, self).__init__()
+        super().__init__()
 
         include_input_xyz = 3 if include_input_xyz else 0
         include_input_dir = 3 if include_input_dir else 0
@@ -240,7 +241,7 @@ class FlexibleNeRFModel(torch.nn.Module):
             if (
                 i % self.skip_connect_every == 0
                 and i > 0
-                and i != len(self.linear_layers) - 1
+                and i != len(self.layers_xyz) - 1
             ):
                 x = torch.cat((x, xyz), dim=-1)
             x = self.relu(self.layers_xyz[i](x))
@@ -254,3 +255,69 @@ class FlexibleNeRFModel(torch.nn.Module):
             return torch.cat((rgb, alpha), dim=-1)
         else:
             return self.fc_out(x)
+
+
+class AppearanceNeRFModel(torch.nn.Module):
+    def __init__(
+        self,
+        num_layers=7,
+        hidden_size=256,
+        skip_connect_every=3,
+        num_encoding_fn_xyz=6,
+        include_input_xyz=True,
+    ):
+        super().__init__()
+
+        include_input_xyz = 3 if include_input_xyz else 0
+        self.dim_xyz = include_input_xyz + 2 * 3 * num_encoding_fn_xyz
+        self.skip_connect_every = skip_connect_every
+
+        self.layer1 = torch.nn.Linear(self.dim_xyz, hidden_size)
+        self.layers_xyz = torch.nn.ModuleList()
+        for i in range(num_layers - 1):
+            if i % self.skip_connect_every == 0 and i > 0 and i != num_layers - 1:
+                self.layers_xyz.append(
+                    torch.nn.Linear(self.dim_xyz + hidden_size, hidden_size)
+                )
+            else:
+                self.layers_xyz.append(torch.nn.Linear(hidden_size, hidden_size))
+
+        self.fc_rgb = torch.nn.Linear(hidden_size, hidden_size//2)
+        self.fc_out = torch.nn.Linear(hidden_size//2, 3)
+        self.relu = torch.nn.functional.relu
+
+    def forward(self, x):
+        xyz = x[..., : self.dim_xyz]
+        x = self.layer1(xyz)
+        for i in range(len(self.layers_xyz)):
+            if (
+                i % self.skip_connect_every == 0
+                and i > 0
+                and i != len(self.layers_xyz) - 1
+            ):
+                x = torch.cat((x, xyz), dim=-1)
+            x = self.relu(self.layers_xyz[i](x))
+        # if self.use_viewdirs:
+        #     feat = self.relu(self.fc_feat(x))
+        #     alpha = self.fc_alpha(x)
+        #     x = torch.cat((feat, view), dim=-1)
+        #     for l in self.layers_dir:
+        #         x = self.relu(l(x))
+        #     rgb = self.fc_rgb(x)
+        #     return torch.cat((rgb, alpha), dim=-1)
+        # else:
+        x = self.fc_rgb(x)
+        x = self.fc_out(x)
+        return x
+
+
+class AddonNeRFModel(torch.nn.Module):
+    def __init__(self, model_fine, model_app):
+        super().__init__()
+        self.model_fine = model_fine
+        self.model_app = model_app
+
+    def forward(self, x):
+        rgb = self.model_app(x)
+        alpha = self.model_fine(x)[..., -1:]
+        return torch.cat([rgb, alpha], -1)
