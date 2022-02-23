@@ -154,7 +154,18 @@ def main():
         "--base-checkpoint",
         type=str,
         default="",
-        help="Path to load saved checkpoint from.",
+        help="Path to base NeRF checkpoint.",
+    )
+    parser.add_argument(
+        "--load-checkpoint",
+        type=str,
+        default="",
+        help="Path to base+addon checkpoint.",
+    )
+    parser.add_argument(
+        "--reset-iter",
+        action='store_true',
+        help="Start iter from 0 instead of loading from ckpt.",
     )
     configargs = parser.parse_args()
 
@@ -349,13 +360,22 @@ def main():
     # By default, start at iteration 0 (unless a checkpoint is specified).
     start_iter = 0
     # Load an existing checkpoint, if a path is specified.
-    if os.path.exists(configargs.base_checkpoint):
+    if os.path.exists(configargs.load_checkpoint):
+        print(f'loading base+addon NeRF from {configargs.load_checkpoint}...')
+        checkpoint = torch.load(configargs.load_checkpoint)
+        model_coarse.load_state_dict(checkpoint["model_coarse_state_dict"])
+        model_fine.load_state_dict(checkpoint["model_fine_state_dict"])
+        model_app.load_state_dict(checkpoint["model_app_state_dict"])
+        # optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        if not configargs.reset_iter:
+            start_iter = checkpoint["iter"] + 1
+    elif os.path.exists(configargs.base_checkpoint):
         print(f'loading base NeRF from {configargs.base_checkpoint}...')
         checkpoint = torch.load(configargs.base_checkpoint)
         model_coarse.load_state_dict(checkpoint["model_coarse_state_dict"])
         model_fine.load_state_dict(checkpoint["model_fine_state_dict"])
     else:
-        print(f'No base NeRF ckpt found at {configargs.base_checkpoint}, starting anew...')
+        print(f'No base nor addon NeRF ckpt found at {configargs.base_checkpoint}, starting anew...')
 
     # # TODO: Prepare raybatch tensor if batching random rays
 
@@ -400,6 +420,7 @@ def main():
         else:
             p_idx = DEBUG_P_IDX
             # p_idx = np.random.choice(np.arange(len(proxy_imgs)))
+            # p_idx = i % len(proxy_imgs)
             img_idx = i_train[p_idx]
             # img_idx = DEBUG_IDX
 
@@ -490,7 +511,7 @@ def main():
         nst_vgg19(proxy_target_)  # forward pass
         for cl in nst_vgg19.content_losses:
             content_loss += cfg.models.style.content_weight * cl.loss
-
+        print(content_loss.requires_grad)
         # # set style image as background
         # mask_target = mask_target.movedim(-1, 0)[None]
         # rgb_fine = rgb_fine * mask_target + style_img * (1 - mask_target)
@@ -498,7 +519,8 @@ def main():
 
         for sl in nst_vgg19.style_losses:
             style_loss += cfg.models.style.style_weight * sl.loss
-        
+        print(style_loss.requires_grad)
+
         loss = content_loss + style_loss + sim_loss
         loss.backward()
         optimizer.step()
@@ -649,10 +671,10 @@ def main():
                 "model_fine_state_dict": None
                 if not model_fine
                 else model_fine.state_dict(),
-                "model_app_state_dict": model_app.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
                 "loss": loss,
                 "psnr": psnr,
+                "model_app_state_dict": model_app.state_dict(),
             }
             torch.save(
                 checkpoint_dict,
