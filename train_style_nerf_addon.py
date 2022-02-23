@@ -418,9 +418,9 @@ def main():
                 encode_direction_fn=encode_direction_fn,
             )
         else:
-            p_idx = DEBUG_P_IDX
+            # p_idx = DEBUG_P_IDX
             # p_idx = np.random.choice(np.arange(len(proxy_imgs)))
-            # p_idx = i % len(proxy_imgs)
+            p_idx = i % len(proxy_imgs)
             img_idx = i_train[p_idx]
             # img_idx = DEBUG_IDX
 
@@ -501,17 +501,18 @@ def main():
 
         # Range correction
         with torch.no_grad():
-            proxy_target = proxy_target.clamp(0, 1)
+            proxy_target.clamp_(0, 1)
+            # proxy_target = proxy_target.clamp(0, 1)
         proxy_target_ = proxy_target.movedim(-1, 0)[None]
 
         optimizer.zero_grad()
 
         content_loss = 0
         style_loss = 0
+        # print(proxy_target.requires_grad, proxy_target_.requires_grad)
         nst_vgg19(proxy_target_)  # forward pass
         for cl in nst_vgg19.content_losses:
             content_loss += cfg.models.style.content_weight * cl.loss
-        print(content_loss.requires_grad)
         # # set style image as background
         # mask_target = mask_target.movedim(-1, 0)[None]
         # rgb_fine = rgb_fine * mask_target + style_img * (1 - mask_target)
@@ -519,7 +520,6 @@ def main():
 
         for sl in nst_vgg19.style_losses:
             style_loss += cfg.models.style.style_weight * sl.loss
-        print(style_loss.requires_grad)
 
         loss = content_loss + style_loss + sim_loss
         loss.backward()
@@ -579,10 +579,10 @@ def main():
                     )
                     target_ray_values = cache_dict["target"].to(device)
                 else:
-                    p_idx = DEBUG_P_IDX
-                    img_idx = i_train[p_idx]
+                    # p_idx = DEBUG_P_IDX
+                    # img_idx = i_train[p_idx]
 
-                    # img_idx = np.random.choice(i_val)
+                    img_idx = np.random.choice(i_val)
                     # img_idx = DEBUG_IDX
                     img_target = images[img_idx].to(device)
                     pose_target = poses[img_idx, :3, :4].to(device)

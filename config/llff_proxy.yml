@@ -1,7 +1,7 @@
 # Parameters to setup experiment.
 experiment:
   # Unique experiment identifier
-  id: orchids-starry-lr_proxy5e-3-style1e5-sim0e0-addon-debug
+  id: orchids-starry-lr_proxy5e-3-style1e5-sim1e2-addon
   # Experiment logs will be stored at "logdir"/"id"
   logdir: logs
   # Seed for random number generators (for repeatability).
@@ -9,7 +9,7 @@ experiment:
   # Number of training iterations.
   train_iters: 250000
   # Number of training iterations after which to validate.
-  validate_every: 500
+  validate_every: 100
   # Number of training iterations after which to checkpoint.
   save_every: 1000
   # Number of training iterations after which to print progress.
@@ -47,7 +47,7 @@ models:
   style:
     content_weight: 1.0
     style_weight: 100000.0
-    sim_weight: 0.0
+    sim_weight: 100.0
     content_layers: ['relu3_2']
     style_layers: ['relu1_1', 'relu2_1', 'relu3_1', 'relu4_1', 'relu5_1']
   # Coarse model.
