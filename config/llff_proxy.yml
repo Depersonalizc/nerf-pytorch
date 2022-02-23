@@ -1,7 +1,7 @@
 # Parameters to setup experiment.
 experiment:
   # Unique experiment identifier
-  id: orchids-starry-lr_proxy5e-3-style1e5-sim1e2-addon
+  id: orchids-starry-lr_proxy5e-3-style1e6-sim1e2-addon-4view
   # Experiment logs will be stored at "logdir"/"id"
   logdir: logs
   # Seed for random number generators (for repeatability).
@@ -46,7 +46,7 @@ models:
   # Style transfer.
   style:
     content_weight: 1.0
-    style_weight: 100000.0
+    style_weight: 1000000.0
     sim_weight: 100.0
     content_layers: ['relu3_2']
     style_layers: ['relu1_1', 'relu2_1', 'relu3_1', 'relu4_1', 'relu5_1']

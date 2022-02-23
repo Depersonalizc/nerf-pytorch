@@ -419,8 +419,9 @@ def main():
             )
         else:
             # p_idx = DEBUG_P_IDX
+            p_idx = i % 4
             # p_idx = np.random.choice(np.arange(len(proxy_imgs)))
-            p_idx = i % len(proxy_imgs)
+            # p_idx = i % len(proxy_imgs)
             img_idx = i_train[p_idx]
             # img_idx = DEBUG_IDX
 
@@ -502,7 +503,6 @@ def main():
         # Range correction
         with torch.no_grad():
             proxy_target.clamp_(0, 1)
-            # proxy_target = proxy_target.clamp(0, 1)
         proxy_target_ = proxy_target.movedim(-1, 0)[None]
 
         optimizer.zero_grad()
@@ -637,23 +637,22 @@ def main():
                     + str(time.time() - start)
                 )
 
-                p_idx = DEBUG_P_IDX
-                proxy_target = proxy_imgs[p_idx]  # (H, W, 3)
-                img_idx = i_train[p_idx]
-                writer.add_image(
-                    f"proxy/{img_idx}",
-                    cast_to_image(proxy_target[..., :3].clamp(0, 1)),
-                    i,
-                )
+                # p_idx = DEBUG_P_IDX
+                # proxy_target = proxy_imgs[p_idx]  # (H, W, 3)
+                # img_idx = i_train[p_idx]
+                # writer.add_image(
+                #     f"proxy/{img_idx}",
+                #     cast_to_image(proxy_target[..., :3].clamp(0, 1)),
+                #     i,
+                # )
 
-                # if i % 500 == 0:
-                #     for p_idx, proxy_target in enumerate(proxy_imgs):
-                #         img_idx = i_train[p_idx]
-                #         writer.add_image(
-                #             f"proxy/{img_idx}",
-                #             cast_to_image(proxy_target[..., :3].clamp(0, 1)),
-                #             i,
-                #         )
+                for p_idx, proxy_target in enumerate(proxy_imgs[:4]):
+                    img_idx = i_train[p_idx]
+                    writer.add_image(
+                        f"proxy/{img_idx}",
+                        cast_to_image(proxy_target[..., :3].clamp(0, 1)),
+                        i,
+                    )
 
                 # if i == 0:
                 #     rgb_fine = rgb_fine.cpu().detach()
