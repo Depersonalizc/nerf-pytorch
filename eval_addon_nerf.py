@@ -125,6 +125,16 @@ def main():
         )
         model_fine.to(device)
 
+    # Initialize an appearance model
+    model_app = models.AppearanceNeRFModel(
+        num_layers=7,
+        hidden_size=256,
+        skip_connect_every=3,
+        num_encoding_fn_xyz=cfg.models.fine.num_encoding_fn_xyz,
+        include_input_xyz=cfg.models.fine.include_input_xyz,
+    )
+    model_app.to(device)
+
     checkpoint = torch.load(configargs.checkpoint)
 
     model_coarse.load_state_dict(checkpoint["model_coarse_state_dict"])
@@ -136,6 +146,8 @@ def main():
                 "The checkpoint has a fine-level model, but it could "
                 "not be loaded (possibly due to a mismatched config file."
             )
+    model_app.load_state_dict(checkpoint["model_app_state_dict"])
+
     if "height" in checkpoint.keys():
         hwf[0] = checkpoint["height"]
     if "width" in checkpoint.keys():
@@ -147,6 +159,8 @@ def main():
     if model_fine:
         model_fine.eval()
 
+    model_addon = models.AddonNeRFModel(model_fine, model_app)
+
     render_poses = render_poses.float().to(device)
 
     # Create directory to save images to.
@@ -156,7 +170,8 @@ def main():
 
     # Evaluation loop
     times_per_image = []
-    for i, pose in enumerate(tqdm(render_poses)):
+    # for i, pose in enumerate(tqdm(render_poses)):
+    for i, pose in enumerate(tqdm(torch.from_numpy(poses).float().to(device))):
         start = time.time()
         rgb = None, None
         disp = None, None
@@ -168,7 +183,7 @@ def main():
                 hwf[1],
                 hwf[2],
                 model_coarse,
-                model_fine,
+                model_addon,
                 ray_origins,
                 ray_directions,
                 cfg,

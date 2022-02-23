@@ -419,9 +419,9 @@ def main():
             )
         else:
             # p_idx = DEBUG_P_IDX
-            p_idx = i % 4
+            # p_idx = i % 4
             # p_idx = np.random.choice(np.arange(len(proxy_imgs)))
-            # p_idx = i % len(proxy_imgs)
+            p_idx = i % len(proxy_imgs)
             img_idx = i_train[p_idx]
             # img_idx = DEBUG_IDX
 
@@ -646,7 +646,10 @@ def main():
                 #     i,
                 # )
 
-                for p_idx, proxy_target in enumerate(proxy_imgs[:4]):
+                for p_idx, proxy_target in enumerate(
+                  # proxy_imgs[:4]
+                  proxy_imgs
+                  ):
                     img_idx = i_train[p_idx]
                     writer.add_image(
                         f"proxy/{img_idx}",
