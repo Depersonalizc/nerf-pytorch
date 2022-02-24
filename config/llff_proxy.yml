@@ -1,17 +1,19 @@
 # Parameters to setup experiment.
 experiment:
   # Unique experiment identifier
-  id: orchids-starry-lr_proxy5e-3-style1e5-sim1e2-addon-allview
+  id: orchids-starry-lr_proxy5e-3-style1e6-incre-2view-1_5k
   # Experiment logs will be stored at "logdir"/"id"
   logdir: logs
   # Seed for random number generators (for repeatability).
   randomseed: 34  # 8239
   # Number of training iterations.
   train_iters: 250000
+  # Number of training iterations for each view (incremental learning)
+  train_iters_per_view: 10000
   # Number of training iterations after which to validate.
-  validate_every: 500
+  validate_every: 1000
   # Number of training iterations after which to checkpoint.
-  save_every: 500
+  save_every: 5000
   # Number of training iterations after which to print progress.
   print_every: 10
 
@@ -46,8 +48,9 @@ models:
   # Style transfer.
   style:
     content_weight: 1.0
-    style_weight: 100000.0
-    sim_weight: 100.0
+    style_weight: 1000000.0
+    sim_fixed_weight: 100.0
+    sim_joint_weight: 100.0
     content_layers: ['relu3_2']
     style_layers: ['relu1_1', 'relu2_1', 'relu3_1', 'relu4_1', 'relu5_1']
   # Coarse model.
@@ -132,9 +135,11 @@ nerf:
   encode_direction_fn: positional_encoding
   # Training-specific parameters.
   train:
-    # Number of random rays to retain from each image.
+    # Number of random rays to retain from previous (fixed) proxy image.
+    num_rays_fixed: 2048  # 32 * 32 * 4
+    # Number of random rays to retain from current image for joint training.
     # These sampled rays are used for training, and the others are discarded.
-    num_random_rays: 4096  # 32 * 32 * 4
+    num_rays_joint: 2048  # 32 * 32 * 4
     # Size of each chunk (rays are batched into "chunks" and passed through
     # the network)
     chunksize: 131072  # 131072  # 1024 * 32
